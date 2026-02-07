@@ -14,6 +14,7 @@ function createWindow(): void {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    show: false,
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0f0f13',
     webPreferences: {
@@ -22,6 +23,12 @@ function createWindow(): void {
       nodeIntegration: false,
       sandbox: false,
     },
+  });
+
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.center();
+    mainWindow?.show();
+    mainWindow?.focus();
   });
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
