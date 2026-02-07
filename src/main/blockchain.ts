@@ -1,8 +1,45 @@
 import { getSession } from './session-manager';
 import { API } from '@wharfkit/session';
+import { BrowserWindow, ipcMain } from 'electron';
 
 const TOTEMS_CONTRACT = 'totemstotems';
 const MARKET_CONTRACT = 'modsmodsmods';
+const EOS_TOKEN_CONTRACT = 'eosio.token';
+
+const executedTxKeys = new Set<string>();
+
+function txKey(action: string, params: Record<string, string>): string {
+  return `${action}:${JSON.stringify(params)}`;
+}
+
+async function checkDuplicate(action: string, params: Record<string, string>): Promise<void> {
+  const key = txKey(action, params);
+  if (!executedTxKeys.has(key)) return;
+
+  const win = BrowserWindow.getFocusedWindow();
+  if (!win) throw new Error('Duplicate transaction cancelled');
+
+  const confirmed = await new Promise<boolean>((resolve) => {
+    const handler = (_event: any, result: boolean) => {
+      ipcMain.removeListener('respond-duplicate-tx', handler);
+      resolve(result);
+    };
+    ipcMain.on('respond-duplicate-tx', handler);
+    win.webContents.send('confirm-duplicate-tx', { action, params });
+  });
+
+  if (!confirmed) {
+    throw new Error('Duplicate transaction cancelled by user');
+  }
+}
+
+function recordTx(action: string, params: Record<string, string>): void {
+  executedTxKeys.add(txKey(action, params));
+}
+
+export function clearTxLog(): void {
+  executedTxKeys.clear();
+}
 
 function requireSession() {
   const session = getSession();
@@ -13,6 +50,8 @@ function requireSession() {
 // ─── Write Actions ───
 
 export async function transfer(to: string, quantity: string, memo: string) {
+  const params = { to, quantity, memo };
+  await checkDuplicate('transfer', params);
   const session = requireSession();
   const result = await session.transact({
     actions: [
@@ -29,10 +68,36 @@ export async function transfer(to: string, quantity: string, memo: string) {
       },
     ],
   });
+  recordTx('transfer', params);
+  return { transactionId: String(result.resolved?.transaction.id || '') };
+}
+
+export async function transferEosToken(to: string, quantity: string, memo: string) {
+  const params = { to, quantity, memo };
+  await checkDuplicate('transferEos', params);
+  const session = requireSession();
+  const result = await session.transact({
+    actions: [
+      {
+        account: EOS_TOKEN_CONTRACT,
+        name: 'transfer',
+        authorization: [{ actor: session.actor, permission: 'active' }],
+        data: {
+          from: session.actor.toString(),
+          to,
+          quantity,
+          memo,
+        },
+      },
+    ],
+  });
+  recordTx('transferEos', params);
   return { transactionId: String(result.resolved?.transaction.id || '') };
 }
 
 export async function mint(mod: string, quantity: string, payment: string, memo: string) {
+  const params = { mod, quantity, payment, memo };
+  await checkDuplicate('mint', params);
   const session = requireSession();
   const result = await session.transact({
     actions: [
@@ -50,10 +115,13 @@ export async function mint(mod: string, quantity: string, payment: string, memo:
       },
     ],
   });
+  recordTx('mint', params);
   return { transactionId: String(result.resolved?.transaction.id || '') };
 }
 
 export async function burn(quantity: string, memo: string) {
+  const params = { quantity, memo };
+  await checkDuplicate('burn', params);
   const session = requireSession();
   const result = await session.transact({
     actions: [
@@ -69,6 +137,7 @@ export async function burn(quantity: string, memo: string) {
       },
     ],
   });
+  recordTx('burn', params);
   return { transactionId: String(result.resolved?.transaction.id || '') };
 }
 
@@ -117,6 +186,23 @@ export async function getBalances(account?: string) {
 
   const response = await session.client.v1.chain.get_table_rows({
     code: TOTEMS_CONTRACT,
+    scope: targetAccount,
+    table: 'accounts',
+    limit: 100,
+    json: true,
+  });
+
+  return response.rows.map((row: any) => ({
+    balance: String(row.balance),
+  }));
+}
+
+export async function getEosBalances(account?: string) {
+  const session = requireSession();
+  const targetAccount = account || session.actor.toString();
+
+  const response = await session.client.v1.chain.get_table_rows({
+    code: EOS_TOKEN_CONTRACT,
     scope: targetAccount,
     table: 'accounts',
     limit: 100,
@@ -210,4 +296,135 @@ export async function listMods(limit: number = 20, cursor?: string) {
     more: response.more,
     next_key: response.next_key ? String(response.next_key) : undefined,
   };
+}
+
+export async function getFee() {
+  const session = requireSession();
+
+  const response = await session.client.v1.chain.get_table_rows({
+    code: TOTEMS_CONTRACT,
+    scope: TOTEMS_CONTRACT,
+    table: 'feeconfig',
+    limit: 1,
+    json: true,
+  });
+
+  return response.rows.length > 0
+    ? { fee: Number(response.rows[0].amount) }
+    : { fee: 0 };
+}
+
+export async function getAccountInfo(account: string) {
+  const session = requireSession();
+  const info = await session.client.v1.chain.get_account(account);
+  return {
+    account_name: String(info.account_name),
+    ram_quota: Number(info.ram_quota),
+    ram_usage: Number(info.ram_usage),
+    cpu_limit: {
+      used: Number(info.cpu_limit.used),
+      available: Number(info.cpu_limit.available),
+      max: Number(info.cpu_limit.max),
+    },
+    net_limit: {
+      used: Number(info.net_limit.used),
+      available: Number(info.net_limit.available),
+      max: Number(info.net_limit.max),
+    },
+    created: String(info.created),
+  };
+}
+
+export async function checkAccountExists(account: string): Promise<{ exists: boolean; account?: string }> {
+  const session = requireSession();
+  try {
+    await session.client.v1.chain.get_account(account);
+    return { exists: true, account };
+  } catch {
+    return { exists: false, account };
+  }
+}
+
+export async function getTransaction(txId: string) {
+  const session = requireSession();
+  try {
+    const url = String(session.chain.url).replace(/\/$/, '');
+    const response = await fetch(`${url}/v1/history/get_transaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: txId }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    return {
+      id: data.id,
+      block_num: data.block_num,
+      block_time: data.block_time,
+      status: data.trx?.receipt?.status || 'unknown',
+      actions: data.trx?.trx?.actions?.map((a: any) => ({
+        account: a.account,
+        name: a.name,
+        data: a.data,
+      })) || [],
+    };
+  } catch (err: any) {
+    return { error: `Could not fetch transaction: ${err.message}` };
+  }
+}
+
+export async function getTopHolders(ticker: string, limit: number = 20) {
+  const session = requireSession();
+  const url = String(session.chain.url).replace(/\/$/, '');
+
+  // Get all scopes (accounts) that have rows in the totem accounts table
+  const scopeResponse = await fetch(`${url}/v1/chain/get_table_by_scope`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      code: TOTEMS_CONTRACT,
+      table: 'accounts',
+      limit: 500,
+    }),
+  });
+
+  if (!scopeResponse.ok) throw new Error('Failed to fetch table scopes');
+  const scopeData = await scopeResponse.json();
+  const scopes: string[] = scopeData.rows.map((r: any) => r.scope);
+
+  // Query each account's balance for the specific token
+  const holders: Array<{ account: string; amount: number; balance: string }> = [];
+
+  // Query in batches of 10 to avoid overwhelming the node
+  for (let i = 0; i < scopes.length; i += 10) {
+    const batch = scopes.slice(i, i + 10);
+    const results = await Promise.all(
+      batch.map(async (account) => {
+        try {
+          const resp = await session.client.v1.chain.get_table_rows({
+            code: TOTEMS_CONTRACT,
+            scope: account,
+            table: 'accounts',
+            limit: 100,
+            json: true,
+          });
+          for (const row of resp.rows) {
+            const bal = String(row.balance);
+            if (bal.endsWith(` ${ticker}`)) {
+              const amount = parseFloat(bal.split(' ')[0]);
+              if (amount > 0) {
+                return { account, amount, balance: bal };
+              }
+            }
+          }
+        } catch {
+          // skip unreachable accounts
+        }
+        return null;
+      })
+    );
+    holders.push(...results.filter((r): r is NonNullable<typeof r> => r !== null));
+  }
+
+  holders.sort((a, b) => b.amount - a.amount);
+  return holders.slice(0, limit);
 }

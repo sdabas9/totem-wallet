@@ -3,10 +3,11 @@ import { useWallet } from '../hooks/useWallet';
 import type { ChatMessage } from '../types';
 
 export function ChatPage() {
-  const { balances, refreshBalances } = useWallet();
+  const { balances, eosBalances, refreshBalances } = useWallet();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showTools, setShowTools] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -63,18 +64,26 @@ export function ChatPage() {
       <div className="px-6 py-3 border-b border-totem-border bg-totem-surface/50">
         <div className="flex items-center gap-4 overflow-x-auto">
           <span className="text-xs text-totem-text-dim whitespace-nowrap">Balances:</span>
-          {balances.length === 0 ? (
+          {eosBalances.map((b, i) => {
+            const [amount, symbol] = b.balance.split(' ');
+            return (
+              <div key={`eos-${i}`} className="flex items-center gap-1.5 bg-totem-bg rounded-md px-3 py-1.5 whitespace-nowrap">
+                <span className="text-xs font-bold text-totem-accent">{symbol}</span>
+                <span className="text-xs text-totem-text">{amount}</span>
+              </div>
+            );
+          })}
+          {balances.map((b, i) => {
+            const [amount, symbol] = b.balance.split(' ');
+            return (
+              <div key={`totem-${i}`} className="flex items-center gap-1.5 bg-totem-bg rounded-md px-3 py-1.5 whitespace-nowrap">
+                <span className="text-xs font-bold text-totem-primary">{symbol}</span>
+                <span className="text-xs text-totem-text">{amount}</span>
+              </div>
+            );
+          })}
+          {balances.length === 0 && eosBalances.length === 0 && (
             <span className="text-xs text-totem-text-dim">No balances</span>
-          ) : (
-            balances.map((b, i) => {
-              const [amount, symbol] = b.balance.split(' ');
-              return (
-                <div key={i} className="flex items-center gap-1.5 bg-totem-bg rounded-md px-3 py-1.5 whitespace-nowrap">
-                  <span className="text-xs font-bold text-totem-primary">{symbol}</span>
-                  <span className="text-xs text-totem-text">{amount}</span>
-                </div>
-              );
-            })
           )}
         </div>
       </div>
@@ -82,15 +91,23 @@ export function ChatPage() {
       {/* Header */}
       <div className="px-6 py-3 border-b border-totem-border flex items-center justify-between">
         <h2 className="text-lg font-bold">AI Chat</h2>
-        <button
-          onClick={async () => {
-            await window.totemWallet.clearChat();
-            setMessages([]);
-          }}
-          className="text-sm text-totem-text-dim hover:text-totem-text transition-colors"
-        >
-          Clear Chat
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            onClick={() => setShowTools((v) => !v)}
+            className={`text-sm transition-colors ${showTools ? 'text-totem-accent' : 'text-totem-text-dim hover:text-totem-text'}`}
+          >
+            {showTools ? 'Hide Tools' : 'Show Tools'}
+          </button>
+          <button
+            onClick={async () => {
+              await window.totemWallet.clearChat();
+              setMessages([]);
+            }}
+            className="text-sm text-totem-text-dim hover:text-totem-text transition-colors"
+          >
+            Clear Chat
+          </button>
+        </div>
       </div>
 
       {/* Messages */}
@@ -112,7 +129,7 @@ export function ChatPage() {
               </div>
             )}
 
-            {msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
+            {showTools && msg.role === 'assistant' && msg.toolCalls && msg.toolCalls.length > 0 && (
               <div className="space-y-2">
                 {msg.toolCalls.map((tc, j) => (
                   <div

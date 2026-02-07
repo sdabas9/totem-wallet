@@ -32,6 +32,7 @@
     "@wharfkit/transact-plugin-resource-provider": "^1.0.1",
     "@wharfkit/wallet-plugin-privatekey": "^1.1.0",
     "electron-store": "^8.2.0",
+    "openai": "^6.18.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.1.0"

@@ -93,28 +93,68 @@ export interface ChatMessage {
   }>;
 }
 
+export type AiProvider = 'claude' | 'openai' | 'ollama' | 'chutes';
+
+export interface AiConfig {
+  provider: AiProvider;
+  model: string;
+  apiKey?: string;
+}
+
+export interface AiConfigInfo {
+  provider: AiProvider;
+  model: string;
+  hasKey: boolean;
+}
+
+export interface SavedSessionInfo {
+  exists: true;
+  accountName: string;
+  chainId: string;
+  chainLabel: string;
+}
+
+export interface NoSavedSession {
+  exists: false;
+}
+
+export type SavedSessionResult = SavedSessionInfo | NoSavedSession;
+
 declare global {
   interface Window {
     totemWallet: {
       login: (privateKey: string, accountName: string, chainId: string) => Promise<LoginResult>;
       logout: () => Promise<{ success: boolean }>;
+      lock: () => Promise<{ success: boolean }>;
       getSessionInfo: () => Promise<SessionInfo | null>;
       restoreSession: () => Promise<LoginResult>;
+      hasSavedSession: () => Promise<SavedSessionResult>;
+      promptTouchID: () => Promise<LoginResult>;
       getBalances: (account?: string) => Promise<IpcResult<Balance[]>>;
+      getEosBalances: (account?: string) => Promise<IpcResult<Balance[]>>;
       listTotems: (limit?: number, cursor?: string) => Promise<IpcResult<PaginatedResult<TotemRow>>>;
       getTotemStats: (ticker?: string) => Promise<IpcResult<TotemStat[]>>;
       listMods: (limit?: number, cursor?: string) => Promise<IpcResult<PaginatedResult<ModRow>>>;
+      getFee: () => Promise<IpcResult<{ fee: number }>>;
+      getAccountInfo: (account: string) => Promise<IpcResult<any>>;
+      checkAccountExists: (account: string) => Promise<IpcResult<{ exists: boolean; account?: string }>>;
+      getTransaction: (txId: string) => Promise<IpcResult<any>>;
+      getTopHolders: (ticker: string, limit?: number) => Promise<IpcResult<any[]>>;
       transfer: (to: string, quantity: string, memo: string) => Promise<IpcResult<TransactionResult>>;
+      transferEosToken: (to: string, quantity: string, memo: string) => Promise<IpcResult<TransactionResult>>;
       mint: (mod: string, quantity: string, payment: string, memo: string) => Promise<IpcResult<TransactionResult>>;
       burn: (quantity: string, memo: string) => Promise<IpcResult<TransactionResult>>;
       openBalance: (ticker: string) => Promise<IpcResult<TransactionResult>>;
       closeBalance: (ticker: string) => Promise<IpcResult<TransactionResult>>;
-      setClaudeApiKey: (apiKey: string) => Promise<IpcResult>;
+      setAiConfig: (provider: string, model: string, apiKey?: string) => Promise<IpcResult>;
+      getAiConfig: () => Promise<AiConfigInfo | null>;
       sendChatMessage: (message: string) => Promise<IpcResult<string>>;
       getChatHistory: () => Promise<ChatMessage[]>;
       clearChat: () => Promise<{ success: boolean }>;
       onConfirmAction: (callback: (data: { action: string; params: Record<string, any> }) => void) => void;
       respondConfirmAction: (confirmed: boolean) => void;
+      onConfirmDuplicateTx: (callback: (data: { action: string; params: Record<string, any> }) => void) => void;
+      respondDuplicateTx: (confirmed: boolean) => void;
     };
   }
 }

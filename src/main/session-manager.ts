@@ -53,6 +53,11 @@ export function getSessionInfo(): { accountName: string; chainId: string; chainL
   };
 }
 
+export function lockSession(): void {
+  currentSession = null;
+  currentChainId = '';
+}
+
 export function destroySession(): void {
   currentSession = null;
   currentChainId = '';

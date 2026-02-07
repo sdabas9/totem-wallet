@@ -29,7 +29,17 @@ function createWindow(): void {
     mainWindow?.center();
     mainWindow?.show();
     mainWindow?.focus();
+    mainWindow?.moveTop();
   });
+
+  // Fallback: force show after 3 seconds in case ready-to-show doesn't fire
+  setTimeout(() => {
+    if (mainWindow && !mainWindow.isVisible()) {
+      console.log('[main] forcing window visible via timeout');
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, 3000);
 
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -45,15 +55,25 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  registerIpcHandlers(() => mainWindow);
-  initClient();
-  createWindow();
+  console.log('[main] app ready');
+  try {
+    registerIpcHandlers(() => mainWindow);
+    initClient();
+    createWindow();
+    console.log('[main] window created');
+  } catch (err) {
+    console.error('[main] startup error:', err);
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
       createWindow();
     }
   });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[main] uncaught exception:', err);
 });
 
 app.on('window-all-closed', () => {

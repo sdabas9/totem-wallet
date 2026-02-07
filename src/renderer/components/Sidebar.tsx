@@ -7,12 +7,11 @@ const navItems = [
   { to: '/transfer', label: 'Transfer', icon: '→' },
   { to: '/mint', label: 'Mint', icon: '+' },
   { to: '/burn', label: 'Burn', icon: '✕' },
-  { to: '/balances', label: 'Balances', icon: '≡' },
   { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
 export function Sidebar() {
-  const { session, logout } = useWallet();
+  const { session, lock } = useWallet();
 
   return (
     <div className="w-56 bg-totem-surface border-r border-totem-border flex flex-col h-full">
@@ -46,10 +45,10 @@ export function Sidebar() {
 
       <div className="p-4 border-t border-totem-border">
         <button
-          onClick={logout}
-          className="w-full py-2 px-3 text-sm text-totem-text-dim hover:text-totem-error transition-colors rounded hover:bg-totem-error/10"
+          onClick={lock}
+          className="w-full py-2 px-3 text-sm text-totem-text-dim hover:text-totem-text transition-colors rounded hover:bg-white/5"
         >
-          Logout
+          Lock
         </button>
       </div>
     </div>
