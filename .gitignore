@@ -1,0 +1,8 @@
+node_modules/
+.vite/
+out/
+dist/
+*.dmg
+*.zip
+icon.iconset/
+icon_256.png
